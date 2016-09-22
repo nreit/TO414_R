@@ -1,0 +1,205 @@
+---
+title: "Assignment 01"
+author: "Nick Reitnour"
+date: 'Assigned: September 22, 2016'
+---
+
+##### This homework is due by **11:59PM on Thu Sep 22**.  To complete this assignment, follow these steps:
+
+1. Download the `Assignment01.Rmd` file from Canvas.
+
+2. Open `Assignment01.Rmd` in RStudio.
+
+3. Replace the "Your Name Here" text in the `author:` field with your own name.
+
+4. Supply your solutions to the homework by editing `Assignment01.Rmd`.
+
+5. When you have completed the homework and have **checked** that your code both runs in the Console and knits correctly when you click `Knit HTML`, rename the R Markdown file to `Assignment01_YourNameHere.Rmd`, and submit on Canvas.  (YourNameHere should be changed to your own name.) You should submit both the RMD file and its html output.
+
+##### Homework tips:
+
+1. Recall the following useful RStudio hotkeys.
+
+Keystroke | Description
+----------|-------------
+`<tab>` | Autocompletes commands and filenames, and lists arguments for functions.
+`<up>` | Cycles through previous commands in the console prompt
+`<ctrl-up>` | Lists history of previous commands matching an unfinished one
+`<ctrl-enter>` | Runs current line from source window to Console. Good for trying things out ideas from a source file.
+`<ESC>` | Aborts an unfinished command and get out of the + prompt
+
+**Note**: Shown above are the Windows/Linux keys.  For Mac OS X, the `<ctrl>` key should be substituted with the `<command>` (&#8984;) key.
+
+2. Instead of sending code line-by-line with `<ctrl-enter>`, you can send entire code chunks, and even run all of the code chunks in your .Rmd file. Look under the <Chunks> menu of the Source panel.
+
+3. Run your code in the Console and Knit HTML frequently to check for errors.
+
+4. You may find it easier to solve a problem by interacting only with the Console at first. 
+
+### Problem 1: Boolean operations
+
+##### (a) Checking if a number is in a given range. 
+
+Given a (possibly negative) number `x`, write a Boolean expression that returns `TRUE` if and only if `x` is smaller than `-40` or bigger than `105`.  
+
+```{r}
+x <- -50  # Test value of x, you can change this value to test different scenarios
+# Insert your Boolean expression below
+x < -40 | x > 105
+
+```
+
+##### (b) A more complicated example.
+
+Given number `x`, write a Boolean expression that returns `TRUE` if and only if `x` is between 17 and 25; or between 77 and 101.  
+
+```{r}
+# Insert your Boolean expression here
+(17 < x & x < 25) | (77 < x & x < 101)
+```
+
+### Problem 2: Vectors
+
+```{r}
+somedata <- c(10.4, 9.8, 5.6, 4,9, 2,4, 3.1, 7.2, 6.4, 8.8, 12.5, 21.7)
+# Insert code below to show the 5th value in vector somedata
+fifthValue <- somedata[5]
+fifthValue
+
+# Insert code below to show all values except the 5th value in vector somedata
+valuesOneThroughFour <- somedata[1:4]
+valuesSixThroughThirteen <- somedata[6:13]
+allButFifthValue <- c(valuesOneThroughFour, valuesSixThroughThirteen)
+allButFifthValue
+
+# Insert code below that will calculate how many values there are in the vector somedata
+
+length(somedata)
+
+# Insert code below that will calculate the difference between the maximum value and the minimum value in the vector somedata
+
+max(somedata) - min(somedata)
+
+# Insert code below that will show all values more than 10
+greaterThanTen <- c()
+for (v in somedata) {
+  if (v>10)
+    greaterThanTen <- c(greaterThanTen, v)
+}
+greaterThanTen
+
+# Insert code below that will check whether the value 7.2 exists in the vector somedata or not. Code should output TRUE or FALSE depending upon whether the value exists or not in the vector.
+magicNumber <- 7.2
+itExists <- FALSE
+matchTest <- match(somedata, magicNumber, FALSE)
+if (sum(matchTest) > 0)
+  itExists <- TRUE
+itExists
+
+
+```
+
+### Problem 3: Factors
+
+Assume that we have collected address data from several students. We are storing the state of residence information in a vector named `student.state`.
+```{r}
+student.state <- c("MI", "IL", "NY", "MI", "NY", "HI", "IL", "MI", "MI", "NY")
+
+# Insert code below that will convert the contents of student.state into factors
+student.state <- as.factor(student.state)
+
+# Insert code below that will count the number of levels in the factor created above
+levels(student.state) <- student.state
+length(levels(student.state))
+
+# Insert code below that will figure out which state(s) appears in the list only once
+oneAndDone <- 1
+popularityOfStates <- table(student.state)
+popularityOfStates[popularityOfStates <= oneAndDone]
+
+
+```
+### Problem 4: Data frame basics
+
+Import recent stock quotes of Apple into a data frame `apple.quotes`. **Tip**: The data file is located at `http://www.google.com/finance/historical?output=csv&q=AAPL`.  Do not download the file.  Import the data directly using the URL.
+
+```{r}
+# Insert code below that will import AAPL quotes data into apple.quotes
+apple.quotes <- read.csv("http://www.google.com/finance/historical?output=csv&q=AAPL", header = T)
+
+# Insert code below that will calculate the mean value of the volume variable in the data.frame.
+meanVolume = mean(apple.quotes$Volume)
+meanVolume
+
+# Insert code below that will add a new column to the data frame. The column will have the label deviations and will have deviations values defined by (high - low).
+apple.quotes["Deviations"] <- NA
+apple.quotes$Deviations <- apple.quotes$High - apple.quotes$Low
+
+# Insert code that will show all rows for which transction volume > 1,000,000,000 
+overOneBillion <- apple.quotes[apple.quotes$Volume > 1000000000, ]
+overOneBillion
+
+```
+
+### Problem 5: Working with nycflights13
+We will work with the package `nycflights13`. This package has data on all commercial flights departing the three NYC airports. Install the package in R-Console (it works better to not do it in the Rmd file). Now, lets load it in memory usinf the `library` function.
+```{r}
+#Insert code to load the nycflights13 package (not install - you should do that in R Console independently
+library("nycflights13")
+
+```
+
+Lets take a look inside the package. Use the `data` function to see what datasets are part of the package. You should be able to see that there are five datasets `airlines`, `airports`, `flights`, `planes` and `weather`.
+
+Lets take a peek inside the dataset called `flights` - this dataset will be the focus of this submission. Use the `head` function to see the first few rows of data for each of the datasets
+```{r}
+#Insert code to see first few rows of the flights dataset available in nycflights13 package
+
+head(flights)
+
+```
+
+Now, let's find out how many rows and columns does this dataset has. Number of rows: `r #Insert Code`, Number of cols: `r #Insert Code`.
+
+Okay, what if I want to filter this data to small portions. For example: I want to know how many flights where there by United Airlines (code: `UA`) on Jan 12th 2013?
+
+```{r}
+#Insert code to calculate how many flights were there by United on Jan 12, 2013
+
+nrow(flights)
+
+```
+
+#### Focusing on Arrival Delay
+
+First thing we want to figure is: 1. What was the average arrival delay? and 2. What was the maximum arrival delay? 3. What was the median arrival delay **Note**: You will need to make sure that you take care of `NA` values for the code below. 
+
+```{r}
+#Insert code to calculate the average delay by a flight
+mean(flights$arr_delay, na.rm=TRUE)
+
+#Insert code to calculate the maximum delay by a flight
+max(flights$arr_delay, na.rm=TRUE)
+
+#Insert code to calculate the median delay by a flight
+median(flights$arr_delay, na.rm=TRUE)
+
+```
+
+Look at the median and the average arrival delay values. What does that tell you about the distribution of the arrival delay data? We can get further clarity on the distribution of the arrival delay data by drawing a histogram.
+```{r}
+#Insert code to draw a histogram of arrival delays
+hist(flights$arr_delay)
+
+#Insert code to draw a histogram of arrival delays only for delays uptp 300 minutes
+hist(flights$arr_delay, xlim=c(-100, 300))
+```
+
+Now that you have both descriptive stats and some charts on arrival delay data, state your conclusions on how this data is distributed (write in the block provided below)
+```
+Based on the data, there are some interesting insights. The time of distribution shows that most flights are arriving at NYC earlier than its scheduled arrival time. However, based on the max, it seems like there are some extreme cases of delays that is cause the mean to be slightly behind schedule.
+```
+
+That's it. Once you are done, make sure everything works and then you can uplaod the RMD flile and the html output to Canvas.
+
+> I am **always** available to help you with this and other assignments. Feel free to send emails with your questions or drop by my office. When asking questions it works best to just send me R commands as plain text in email rather than attaching the whole RMD file. -Sanjeev.
