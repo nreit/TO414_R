@@ -1,0 +1,343 @@
+---
+title: "TO414 - Group HW 01"
+output: html_document
+---
+```{r}
+citibike <- read.table("201504-citibike-tripdata.csv", header = T, sep = ",")
+library(dplyr)
+library(ggplot2)
+library(ggmap)
+library(qmap)
+```
+
+```
+Which stations see the most asymmetric traffic (more arrivals than departures and vice versa)?
+```
+
+```{r}
+departures <- summarise(group_by(citibike, start.station.name), departure=length(start.station.name))
+arrivals <- summarise(group_by(citibike, end.station.name), arrival=length(end.station.name))
+asymmetry <- merge(departures, arrivals, by.x="start.station.name", by.y="end.station.name")
+asymmetry$netArrival = asymmetry$arrival - asymmetry$departure
+sortedAsymmetry <- arrange(asymmetry, desc(netArrival))
+head(sortedAsymmetry)
+```
+
+```
+Does this change with time of day and day of the week?
+```
+
+```{r}
+determineDay <- function(timeString) {
+  timeString <- as.character(timeString)
+  if(!is.character(timeString)) day <- NA
+  else {
+    length = nchar(timeString)
+    x <- substr(timeString, length-15, length-14)
+    x <- as.numeric(gsub("/", "0", x))
+    # Shift for April 2015
+    x <- x + 2
+    if(x %% 7 == 0) {
+      day <- "Sunday"
+    } 
+    else if(x %% 7 == 1) {
+      day <- "Monday"
+    } 
+    else if(x %% 7 == 2) {
+      day <- "Tuesday"
+    } 
+    else if(x %% 7 == 3) {
+      day <- "Wednesday"
+    } 
+    else if(x %% 7 == 4) {
+      day <- "Thursday"
+    }
+    else if(x %% 7 == 5) {
+      day <- "Friday"
+    }
+    else if(x %% 7 == 6) {
+      day <- "Saturday"
+    }
+    else {
+      day <- NA
+    }
+  }
+  day
+}
+
+determineTime <- function(timeString) {
+  timeString <- as.character(timeString)
+  if(!is.character(timeString)) timeCategory <- NA
+  else {
+    length = nchar(timeString)
+    x <- as.numeric(substr(timeString, length - 7, length - 6))
+    if(0 <= x & x < 8) {
+      timeCategory <- "Early Morning"
+    } 
+    else if(x < 12) {
+      timeCategory <- "Morning"
+    } 
+    else if(x < 16) {
+      timeCategory <- "Afternoon"
+    } 
+    else if(x < 20) {
+      timeCategory <- "Evening"
+    } 
+    else if(x < 24) {
+      timeCategory <- "Late Evening"
+    }
+    else {
+      timeCategory <- NA
+    }
+  }
+  timeCategory
+}
+
+citibike$timeOfDay <- sapply(citibike$starttime, determineTime)
+citibike$timeOfDay <- factor(citibike$timeOfDay, levels=c("Early Morning", "Morning", "Afternoon", "Evening", "Late Evening"))
+longestRides <- summarise(group_by(citibike, start.station.name, timeOfDay), tripDuration = mean(tripduration, na.rm=TRUE))
+
+#For Time of day, assume determineTime has already added citibike$timeOfDay
+departuresByDay <- summarise(group_by(citibike, start.station.name, timeOfDay), departure=length(start.station.name))
+arrivalsByDay <- summarise(group_by(citibike, end.station.name, timeOfDay), arrival=length(end.station.name))
+asymmetryByDay <- merge(departuresByDay, arrivalsByDay, by.x=c("start.station.name", "timeOfDay"), by.y=c("end.station.name", "timeOfDay"))
+asymmetryByDay$netArrival = asymmetryByDay$arrival - asymmetryByDay$departure
+sortedAsymmetryByDay <- arrange(asymmetryByDay, desc(netArrival))
+head(sortedAsymmetryByDay)
+
+citibike$week <- sapply(citibike$starttime, determineDay)
+citibike$week <- factor(citibike$week, levels=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+departuresByWeek <- summarise(group_by(citibike, start.station.name, week), departure=length(start.station.name))
+arrivalsByWeek <- summarise(group_by(citibike, end.station.name, week), arrival=length(end.station.name))
+asymmetryByWeek <- merge(departuresByWeek, arrivalsByWeek, by.x=c("start.station.name", "week"), by.y=c("end.station.name", "week"))
+asymmetryByWeek <- arrange(asymmetryByWeek, start.station.name, week)
+asymmetryByWeek$netArrival = asymmetryByWeek$arrival - asymmetryByWeek$departure
+sortedAsymmetryByWeek <- arrange(asymmetryByWeek, desc(netArrival))
+head(sortedAsymmetryByWeek)
+```
+
+```
+Which stations originate the longest rides? Does this change as we go through different times of the day? Do different seasons matter? (Note: Could not answer seasonal variability question using one month of data)
+```
+
+```{r}
+#Calculate avg. trip duration by station 
+stationsWithLongestRides <- summarise(group_by(citibike, start.station.name), tripDuration = mean(tripduration, na.rm=TRUE))
+sortedStations <- arrange(stationsWithLongestRides, desc(tripDuration))
+head(sortedStations)
+
+longestRidesOld <- summarise(group_by(citibike, start.station.name, timeOfDay), tripDuration = mean(tripduration, na.rm=TRUE))
+sortedLongestRides <- arrange(longestRidesOld, desc(tripDuration))
+head(sortedLongestRides)
+
+barplot(sortedStations$tripDuration,main = "Mean Trip Length Distribution By Station",ylab = "Trip Duration (Seconds)", ylim = c(0,4000), xlab = "Station Ids")
+plotname <- sortedStations$start.station.name[sortedStations$tripDuration > 1700]
+barplot(sortedStations$tripDuration[sortedStations$tripDuration > 1700],names.arg = plotname, las = 2, ylab = "Trip Duration (Seconds)",ylim = c(0,4000),main = "Highest Mean Trip Durations by Station")
+
+citibikeEarlyMorning <- subset(citibike, citibike$timeOfDay == "Early Morning")
+citibikeMorning <- subset(citibike, citibike$timeOfDay == "Morning")
+citibikeAfternoon <- subset(citibike, citibike$timeOfDay == "Afternoon")
+citibikeEvening <- subset(citibike, citibike$timeOfDay == "Evening")
+citibikeLateEvening <- subset(citibike, citibike$timeOfDay == "Late Evening")
+
+citibikeEarlyMorning$start.station.id <- as.factor(citibikeEarlyMorning$start.station.id)
+earlyMorningDurationPlot <- summarise(group_by(citibikeEarlyMorning, start.station.name, timeOfDay), meanDuration = mean(tripduration))
+
+citibikeMorning$start.station.id <- as.factor(citibikeMorning$start.station.id)
+morningDurationPlot <- summarise(group_by(citibikeMorning, start.station.name, timeOfDay), meanDuration = mean(tripduration))
+
+citibikeAfternoon$start.station.id <- as.factor(citibikeAfternoon$start.station.id)
+afternoonDurationPlot <- summarise(group_by(citibikeAfternoon, start.station.name, timeOfDay), meanDuration = mean(tripduration))
+
+citibikeEvening$start.station.id <- as.factor(citibikeEvening$start.station.id)
+eveningDurationPlot <- summarise(group_by(citibikeEvening, start.station.name, timeOfDay), meanDuration = mean(tripduration))
+
+citibikeLateEvening$start.station.id <- as.factor(citibikeLateEvening$start.station.id)
+lateEveningDurationPlot <- summarise(group_by(citibikeLateEvening, start.station.name, timeOfDay), meanDuration = mean(tripduration))
+sortedEarlyMorningDuration <- earlyMorningDurationPlot[order(-earlyMorningDurationPlot$meanDuration),]
+
+sortedMorningDuration <- morningDurationPlot[order(-morningDurationPlot$meanDuration),]
+
+sortedAfternonDuration <- afternoonDurationPlot[order(-afternoonDurationPlot$meanDuration),]
+
+sortedEveningDuration <- eveningDurationPlot[order(-eveningDurationPlot$meanDuration),]
+
+sortedLateEveningDuration <- lateEveningDurationPlot[order(-lateEveningDurationPlot$meanDuration),]
+
+topEarlyMorningDuration <- sortedEarlyMorningDuration[1:10,]
+topMorningDuration <- sortedMorningDuration[1:10,]
+topAfternoonDuration <- sortedAfternonDuration[1:10,]
+topEveningDuration <- sortedEveningDuration[1:10,]
+topLateEveningDuration <- sortedLateEveningDuration[1:10,]
+
+barplot(topEarlyMorningDuration$meanDuration,names.arg = topEarlyMorningDuration$start.station.name, main = "Longest Early Morning Durations", ylab = "Mean Duration (Seconds)", las = 2, ylim = c(0,6500))
+
+barplot(topMorningDuration$meanDuration, names.arg = topEarlyMorningDuration$start.station.name, main = "Longest Morning Durations", ylab = "Mean Duration (Seconds)", las = 2)
+
+barplot(topAfternoonDuration$meanDuration, names.arg = topAfternoonDuration$start.station.name, las = 2, main = "Longest Afternoon Duration", ylab = "Mean Duration (Seconds)")
+
+barplot(topEveningDuration$meanDuration, names.arg = topEarlyMorningDuration$start.station.name, las = 2, main = "Longest Evening Duration", ylab = "mean Duration (Seconds)")
+
+barplot(topLateEveningDuration$meanDuration, names.arg = topLateEveningDuration$start.station.name, las = 2, main = "Longest Late Evening Duration", ylab = "Mean Duration (Seconds)")
+```
+
+```
+We notice that the trip durations in the morning are the shortest on average and the evening time frame has the longest trip durations. An anomaly we noticed is that in the late evening there appears to be an outlier for trip duration at S 5th Place and S 4th Street. The mean duration is 25898.353 seconds which is about 4 times as long as any other station at any point in time. When looking at which stations are most popular by the time of day we notice that Hudson originates the longest trips in the morning and early morning, but is not even in the top 10 longest mean durations at any other point in the day. From the data it appears that the time of day indeed does change both which stations have the longest trip durations and the mean trip durations overall. We are unable to isolate seasonal variance as we cannot determine whether the variance is due to day of the month or season given we are only looking at a single month.
+```
+
+```{r}
+#heatmap of usage distribution
+simpleTopTripDuration <- longestRides
+dataDispersionGlimpse <- simpleTopTripDuration[1:120,]
+ggplot(dataDispersionGlimpse, aes(x = timeOfDay, y = start.station.name)) + geom_tile(aes(fill = tripDuration)) + scale_fill_gradient(low = 'white', high = 'blue')
+```
+```
+Does usage duration vary by gender?
+```
+```{r}
+longestRides <- summarise(group_by(citibike, start.station.name, timeOfDay, gender), tripDuration = mean(tripduration, na.rm=TRUE))
+
+#men
+simpleTopTripDurationMen <- subset(longestRides, longestRides$gender == 1)
+dataDispersionGlimpseMen <- simpleTopTripDurationMen[1:120,]
+ggplot(dataDispersionGlimpseMen, aes(x = timeOfDay, y = start.station.name)) + geom_tile(aes(fill = tripDuration)) + scale_fill_gradient(low = 'white', high = 'navy')
+
+#women
+simpleTopTripDurationWomen <- subset(longestRides, longestRides$gender == 2)
+dataDispersionGlimpseWomen <- simpleTopTripDurationWomen[1:120,]
+ggplot(dataDispersionGlimpseWomen, aes(x = timeOfDay, y = start.station.name)) + geom_tile(aes(fill = tripDuration)) + scale_fill_gradient(low = 'white', high = 'navy')
+```
+```
+It appears women use these bikes signficantly more longer on average than men. This could have certain business implications we can discuss later in section 3.
+
+Is there a difference between the distance customers and subscribers ride their bikes?
+```
+
+```{r}
+#Google Maps uses an average speed of 9.94 mph, or 14.58 feet/second, to calculate bike ride distances
+feetbyuser <- tapply(citibike$tripduration*14.58, citibike$usertype, na.rm=TRUE)
+barplot(feetbyuser, ylab="Average Feet Traveled", col=c("orange", "navy"))
+```
+```
+It looks like customers are traveling far longer distances on average than subscribers.
+```
+
+```
+Show popular stations/routes on the map.
+```
+
+```{r}
+citibike <- read.table("201504-citibike-tripdata.csv", header = T, sep = ",")
+stationLocation <- data.frame(count(citibike, start.station.name, start.station.latitude, start.station.longitude))
+mapNewYorkCity <- qmap('newyorkcity', zoom = 13)
+newMap <- mapNewYorkCity + geom_point(data=stationLocation, aes(x=start.station.longitude, y=start.station.latitude, size=n))
+newMap
+```
+
+```
+This map displays stations by magnitude of their usage, or popularity.
+```
+
+```{r}
+pathMap <- mapNewYorkCity + geom_point(data = stationLocation, aes(x=start.station.longitude, y=start.station.latitude))
+
+popularRoutes <- tally(group_by(citibike, start.station.name, end.station.name), sort = TRUE)
+stationTravel <- tally(group_by(citibike, start.station.name, start.station.latitude, start.station.longitude, end.station.name, end.station.latitude, end.station.longitude))
+stationTravel <- data.frame(stationTravel)
+
+stationTravel <- subset(stationTravel, stationTravel$n >= 75) #can increase or decrease n based on desired popularity
+
+df <- (data.frame(x1 = stationTravel$start.station.longitude, x2 = stationTravel$end.station.longitude, y1 = stationTravel$start.station.latitude, y2 = stationTravel$end.station.latitude))
+
+frequentMap <- pathMap + geom_segment(aes(x = x1, y = y1, xend = x2, yend = y2), data = df, colour="blue", size = 0.5)
+moreStationTravel <- subset(stationTravel, stationTravel$n >= 150)
+bigdf <- (data.frame(x1 = moreStationTravel$start.station.longitude, x2 = moreStationTravel$end.station.longitude, y1 = moreStationTravel$start.station.latitude, y2 = moreStationTravel$end.station.latitude))
+moreFrequentMap <- frequentMap + geom_segment(aes(x = x1, y = y1, xend = x2, yend = y2), data = bigdf, colour="red", size = 1)
+moreFrequentMap
+
+```
+
+```
+This map displays frequent (frequency of at least 75) routes in blue and very frequent (frequency of at least 150) routes in red.
+
+Show stations with a surplus (more arrivals than departures) and deficit (more departures than arrivals) on a map so that any geopgraphical clustering of these stations can be visually seen.
+```
+
+```{r}
+allthedepartures <- summarise(group_by(citibike, start.station.name, start.station.longitude, start.station.latitude), departure=length(start.station.name))
+allthearrivals <- summarise(group_by(citibike, end.station.name, start.station.longitude, start.station.latitude), arrival=length(end.station.name))
+differentialasymmetry <- merge(allthedepartures, allthearrivals, by.x="start.station.name", by.y="end.station.name")
+head(differentialasymmetry)
+differentialasymmetry$netArrival = differentialasymmetry$arrival - differentialasymmetry$departure
+nicelysortedAsymmetry <- arrange(differentialasymmetry, desc(netArrival))
+
+surplusDataFrame <- data.frame(nicelysortedAsymmetry)
+surplusDataFrame
+
+mapNewYorkCity <- qmap('newyorkcity', zoom = 13)
+
+stationsWithANegativeShortage <- surplusDataFrame[surplusDataFrame$netArrival<0,]
+stationsWithANegativeShortage
+
+shortageMap <- mapNewYorkCity + geom_point(data=stationsWithANegativeShortage, aes(x=start.station.longitude.x, y=start.station.latitude.x, size=netArrival))
+shortageMap
+```
+
+
+```
+While the client wants you to not limit your approach, they are particularly troubled by the following business issues and look forward to any insights on these issues: 
+```
+
+```
+Stations running out of bikes is a big problem. Client would want to know which stations are candidates for improving bike storage capacity.
+```
+
+```{r}
+storageImprovements <- subset(sortedAsymmetry,sortedAsymmetry$netArrival < 0)
+storageImprovements[order(storageImprovements$netArrival),]
+```
+
+```
+There are `r nrow(storageImprovements)` stations that had more departures than arrivals in the month of april. These could all be future candidates for storage improvement, although we would only recommend upgrading the storage on the stations which had the largest deficit initially. There were `r nrow(storageImprovements$netArrival < -100)`
+stations that had net arrivals less than -100 and would benefit the most from the upgrades. In particular Pershing Square South had the most negative net arrivals with `r min(storageImprovements$netArrival)`.
+```
+
+```{r}
+new <- summarise(group_by(citibike, start.station.name, end.station.name), n = length(start.station.name), meanDuration = mean(tripduration))
+
+new_citibike <- arrange(subset(new, start.station.name == end.station.name))
+new_citibike <- arrange(new_citibike, desc(n))
+new_citibike$bikesPerDay = ceiling(new_citibike$n/30)
+topAddedBikes <- new_citibike[1:20,]
+barplot(topAddedBikes$bikesPerDay, names.arg = topAddedBikes$start.station.name, las = 2, main = "Stations Requiring Safety Stock of Bikes", ylab = "Required Safety Stock")
+```
+
+```
+We noticed that some of the most popular routes started and ended at the same location. These locations would need extra bikes regardless of their net arrivals data. For our net arrivals calculation, these routes are not treated as a trip. However, citibike should keep safety stock for these trips. For example, per day, the route from Central Park to Central park is used 40 times. Therefore, we assumed that the Central Park station should try to keep a safety stock of 40 bikes. The top twenty types of these routes should consider adding more bikes storage regardless of whether they lose bikes on average or gain bikes on average.
+```
+
+```
+Bike maintenance bills are piling up. Client thinks that this is because some bikes are being used a lot more than other bikes. Can you check on this assumption?
+```
+
+```{r}
+citibike$bikeid <- as.factor(citibike$bikeid)
+bike.table <- table(citibike$bikeid)
+hist(bike.table)
+```
+
+```
+There seems to be a large range between usage for different bikes. While there are many bikes being used between 0-100 times in one month, there are a few bikes being used as many as 200-250 times per month, which we will call "overused." Let's check how many bikes are overused compared to how many bikes there are in total.
+```
+
+```{r}
+nrow(subset(bike.table, bike.table > 200))/nrow(bike.table)
+```
+
+```
+Only 3.7% of the bikes are in the 200-250 per month usage range that deviates from the standard pattern of the original histogram. Unless the client is concerned with a very small percentage of bikes, bike usage may not be the problem. Other possible factors to look into are bike age, rider usage, and abnormal weather.
+```
+
+```
+A final business suggestion, recalling the heatmaps constructed earlier for different usage durations between men and women, is for the client to reconsider how they are matching advertisers to bike users at different stations. We assume stations have some room to place advertisements and that these advertisements can generate significant revenue for the client. In order for advertising to be the most effective (and to attract more advertisers), the client should match stations with greater concentrations of men to ads more directed towards men and vice versa. 
+```
