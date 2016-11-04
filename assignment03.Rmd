@@ -1,0 +1,102 @@
+---
+title: "TO414 - Assignment 03"
+author: "Nick Reitnour"
+date: "Due Mon Oct 24th 11:59PM"
+output: html_document
+---
+
+```
+QUESTION 1: Build a linear regression model with borrower_rate as the response variable.
+```
+
+```{r}
+library(lmtest)
+library(car)
+lendingData <- read.table("Listings2013.csv", header = T, sep = ",")
+```
+```
+I made a base linear model with all the variables included
+```
+```{r}
+
+null_LinearModel <- lm(borrower_rate ~ amount_funded + monthly_income + dti + months_employed + current_delinquencies + delinquencies_last7_years + open_credit_lines + credit_lines_last7_years + inquiries_last6_months + total_inquiries + bankcard_utilization + revolving_balance + is_homeowner, data = lendingData)
+summary(null_LinearModel)
+residualPlots(null_LinearModel)
+bptest(null_LinearModel)
+vif(null_LinearModel)
+dwtest(null_LinearModel)
+outlierTest(null_LinearModel)
+AIC(null_LinearModel)
+```
+
+```
+Then I made a model that eliminated all variables that have high p-values
+```
+```{r}
+eliminateHighPValue_LinearModel <- lm(borrower_rate ~ amount_funded + monthly_income + dti + current_delinquencies + delinquencies_last7_years + open_credit_lines + credit_lines_last7_years + inquiries_last6_months + total_inquiries + bankcard_utilization + is_homeowner, data = lendingData)
+summary(eliminateHighPValue_LinearModel)
+AIC(eliminateHighPValue_LinearModel)
+
+Anova(eliminateHighPValue_LinearModel, null_LinearModel)
+
+
+```
+```
+However, the best linear model I found on the basis of AIC was this one ...
+```
+
+```{r}
+automatedFinding_LinearModel <- step(object = null_LinearModel, direction = "backward")
+AIC(automatedFinding_LinearModel)
+test_LinearModel <- lm(borrower_rate ~ amount_funded + monthly_income + dti + months_employed + current_delinquencies + delinquencies_last7_years + open_credit_lines + credit_lines_last7_years + inquiries_last6_months + total_inquiries + bankcard_utilization + is_homeowner, data = lendingData)
+summary(test_LinearModel)
+AIC(test_LinearModel)
+
+```
+```
+QUESTION 2: Build a logistic regression model to explore the drivers of a loan going bad.
+```
+
+```
+I repeated the process of making a base logit model with all the variables.
+```
+```{r}
+determineType <- function(x) {
+    if (x == 'DEFAULTED') {
+      categorize <- 1
+    } else if (x == 'CHARGEOFF') {
+      categorize <- 1
+    } else {
+      categorize <- 0
+    }
+    categorize
+    }
+data_set <- lendingData
+categorizeTime <- sapply(data_set$loan_status, FUN=determineType)
+data_set$logit_LoanStatus <-categorizeTime
+base_Model <- glm(logit_LoanStatus ~ borrower_rate + amount_funded + monthly_income + dti + months_employed + current_delinquencies + delinquencies_last7_years + open_credit_lines + credit_lines_last7_years + inquiries_last6_months + total_inquiries + bankcard_utilization + revolving_balance + is_homeowner, data = data_set, family="binomial")
+summary(base_Model)
+AIC(base_Model)
+```
+```
+I tried eliminating all the variables from the logit model that did not have a p-value of 0.05 or less
+```
+```{r}
+goodPs_Model <- glm(logit_LoanStatus ~ borrower_rate + amount_funded + monthly_income + open_credit_lines + credit_lines_last7_years + total_inquiries, data = data_set, family="binomial")
+summary(goodPs_Model)
+AIC(goodPs_Model)
+```
+```
+However, the best logit model I found was the original Null
+
+
+
+```
+```
+EXTRA CREDIT
+```
+```
+In order to identify arbitrage opportunities, I would run each possible loan scenario through my linear model. If the actual borrow_rate is higher than the predicted borrow_rate, then there is an opportunity to make more money at less risk.
+
+Additionally, I would use the logit model to determine the actual risk of each possible loan. If the risk of the loan is not aligned with that of what is typical for a borrow_rate, then I would assume there is an arbitrage opportunity as well.
+```
