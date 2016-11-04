@@ -1,0 +1,94 @@
+---
+title: "TO414 - Assignment 04"
+author: "Nick Reitnour & Josh Denzler"
+date: "Due Fri Nov 4th 11:59PM"
+output: html_document
+---
+
+```
+Load the data
+```
+```{r}
+suppressPackageStartupMessages(library(lmtest))
+suppressPackageStartupMessages(library(car))
+suppressPackageStartupMessages(library(class))
+suppressPackageStartupMessages(library(gmodels))
+options(digits = 5)
+teleMarketingData <- read.table("telemarketing.csv", header = T, sep = ";")
+
+```
+
+```
+Preview the data
+```
+```{r}
+head(teleMarketingData)
+table(teleMarketingData$y)
+```
+
+```
+Clean Data
+```
+```{r}
+#teleMarketingData <- subset(teleMarketingData, select=-c(duration))
+teleMarketingData <- teleMarketingData[-11]
+outcome <- teleMarketingData[, 20]
+#teleMarketingData <- teleMarketingData[-20]
+#teleMarketingData$pdays[teleMarketingData$pdays == 999] <- NA
+```
+```
+Convert to Integers
+```
+
+```{r}
+tele.expanded <- as.data.frame(model.matrix(~ 0 + age + job + marital + education + default + housing + loan + contact + month + day_of_week + campaign + pdays + previous + poutcome + emp.var.rate + cons.price.idx + cons.conf.idx + euribor3m + nr.employed, teleMarketingData))
+#tele.expanded <- as.data.frame(model.matrix(~ . -1, data= teleMarketingData))
+head(tele.expanded)
+```
+
+```
+Normalize Data
+```
+```{r}
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+tele_normalized <- as.data.frame(lapply(tele.expanded[1:ncol(tele.expanded)], normalize))
+head(tele_normalized)
+#tele_normalized$Outcome <- result
+
+
+```
+
+```
+Train
+```
+
+```{r}
+nrow(tele_normalized)
+head(tele_normalized)
+tele_train <- tele_normalized[1:36000, ]
+tele_test <- tele_normalized[36001:41188, ]
+tele_train_labels <- teleMarketingData[1:36000, ncol(teleMarketingData)]
+#tele_train_labels <- tele.expanded[1:36000, 20]
+#tele_test_labels <- tele.expanded[36001:41188, 20]
+tele_test_labels <- teleMarketingData[36001:41188, ncol(teleMarketingData)]
+
+tele_test_pred <- knn(train = tele_train, test = tele_test, cl = tele_train_labels, k=2)
+tele_test_pred
+
+```
+
+```
+Understand the KNN Model
+```
+
+```{r}
+CrossTable(x = tele_test_labels, y = tele_test_pred, prop.chisq=FALSE)
+
+#tele_z <- as.data.frame(scale(teleMarketingData[-1]))
+#tele_train <- tele_z[1:36000, ]; tele_test <- tele_z[36001:41188, ]  
+#tele_test_pred <- knn(train = tele_train, test = tele_test, cl = tele_train_labels, k=4)
+
+#CrossTable(x = tele_test_labels, y = tele_test_pred, prop.chisq=FALSE)
+```
