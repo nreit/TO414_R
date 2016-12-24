@@ -1,0 +1,100 @@
+---
+title: "TO414 - Assignment 05"
+author: "Nick Reitnour"
+date: "Due Sun Nov 13th 11:59PM"
+output: html_document
+---
+```
+## Objective
+```
+```
+The goal of this project is to accurately predict which tele-marketing calls are going to be successful and which will not so that our telemarketers can channel their efforts to increase their likelihood of success. In the past, I tried using a KNN model in order to perform this task. However, it didn't generate the magnitude of accuracy that I desired because there were a disproportional amount of 'yes' to 'no'. Therefore, I will attempt to beat the performance of KNN models in the last homework through the use of Support Vector Machines and Neural Networks.
+```
+
+```
+## Pre-Analysis
+```
+```
+Before I start any analysis, I want to load the data into this R environment. I was provided a CSV file containing the data, and so that is what I will use for the basis of my analysis. In addition, I need to load the R libraries that I will be using to perform these analyses. Nevertheless, before I even start to use these libraries, I want to preview what my data will look like. Through the use of 'head' I can see what are the columns I will be analyzing as well as the disproportion of 'yes' to 'no' as I saw in my previous analysis.
+```
+```{r}
+suppressPackageStartupMessages(library(kernlab))
+suppressPackageStartupMessages(library(neuralnet))
+suppressPackageStartupMessages(library(gmodels))
+options(digits = 5)
+
+teleMarketingData <- read.table("telemarketing.csv", header = T, sep = ";")
+
+head(teleMarketingData)
+table(teleMarketingData$y)
+```
+
+```
+## Prepare Data
+```
+```
+While I am gracious for the data being provided in the format of a CSV file (versus having to scrap it from the Internet), the data must still be cleaned up in order to put it in a format that can actually be used in an analysis. The first step of this is to remove column #11 - Duration - because that is an after-the-fact variable and a telemarketer can't leverage that information prior to a phone call. Additionally, I want to separate the result from the drivers, and so I moved column #20 into a different data frame.
+
+After that, I converted the data from a CSV file into a matrix data frame that would enable me to run my analyses on. Now that I have a matrix data frame, I can normalize all the data. Normalization is an important process because it puts all the data on the same level so that no variable disproporationately affects the the outcome.
+```
+```{r}
+teleMarketingData <- teleMarketingData[-11]
+outcome <- teleMarketingData[, 20]
+
+tele.expanded <- as.data.frame(model.matrix(~ 0 + age + job + marital + education + default + housing + loan + contact + month + day_of_week + campaign + pdays + previous + poutcome + emp.var.rate + cons.price.idx + cons.conf.idx + euribor3m + nr.employed, teleMarketingData))
+
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+tele_normalized <- as.data.frame(lapply(tele.expanded[1:ncol(tele.expanded)], normalize))
+
+
+```
+
+```
+## Support Vector Machines
+```
+```
+Now that the data has been cleaned and it is in a convenient data format, I will run my first type of analysis - Support Vector Machine. A Support Vector Machine (SVM) is discriminative classifier formally defined by a separating hyperplane. In other words, given labeled training data (supervised learning), the algorithm outputs an optimal hyperplane which categorizes new examples.
+```
+
+```{r}
+tele_train <- tele_normalized[1:36000, ]
+tele_test <- tele_normalized[36001:41188, ]
+
+tele_train_labels <- teleMarketingData[1:36000, ncol(teleMarketingData)]
+tele_test_labels <- teleMarketingData[36001:41188, ncol(teleMarketingData)]
+
+svm_classifier <- ksvm(tele_train_labels ~ ., data = tele_train, kernel = "vanilladot")
+svm_classifier
+
+```
+
+```
+Understand the KNN Model
+```
+
+```{r}
+#CrossTable(x = tele_test_labels, y = svm_classifier, prop.chisq=FALSE)
+
+```
+```
+NEURAL NETWORKS:
+```
+```{r}
+numeric_train_lables <- as.numeric(tele_train_labels)
+head(numeric_train_lables)
+tele_train$result <- numeric_train_lables
+neuralnet_tele_model <- neuralnet(formula = result ~ age + jobadmin. + jobblue.collar + jobentrepreneur + jobhousemaid + jobmanagement + jobretired + jobself.employed + jobservices + jobstudent + jobtechnician + jobunemployed + jobunknown + maritalmarried + maritalsingle + maritalunknown + educationbasic.6y + educationbasic.9y + educationhigh.school + educationilliterate + educationprofessional.course + educationuniversity.degree + educationunknown + defaultunknown + defaultyes + housingunknown + housingyes + loanunknown + loanyes + contacttelephone + monthaug + monthdec + monthjul + monthjun + monthmar + monthmay + monthnov + monthoct + monthsep + day_of_weekmon + day_of_weekthu + day_of_weektue + day_of_weekwed + campaign + pdays + previous + poutcomenonexistent + poutcomesuccess + emp.var.rate + cons.price.idx + cons.conf.idx + euribor3m + nr.employed, data = tele_train)
+plot(neuralnet_tele_model)
+```
+```
+Determine Quality of Neural Network
+```
+```{r}
+#model_results <- compute(neuralnet_tele_model, tele_test[1:15]) #53
+
+#predicted_strength <- model_results$net.result #Check the net.result
+#tele_test$result <- 
+#cor(predicted_strength, tele_test$strength)
+```
