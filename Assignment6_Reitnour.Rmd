@@ -1,0 +1,626 @@
+---
+title: "Machine Learning Domain Exploration"
+author: "Nick Reitnour"
+date: "November 20, 2016 11:59pm"
+output: html_document
+---
+
+##March Madness Overview
+
+```
+The NCAA Men's Division 1 Basketball Tournament is a 68 team bracket-style tournament that is played every year to determine the college basketball champion. Due to its unpredictableness it has become an extremely popular betting event. Last year, over $9 billion was wagered on these games and that number continues to rise.
+
+In the states where sports gambling is legal, March Madness is an extremely lucrative business with a huge problem of unpredictableness. The individuals that can get an edge are able to leverage the "Kelly Criterion" and thus maximize winnings over the long-run.
+
+Additionally, a recent patent by Microsoft (Patent No. 0125691) has generated increased interest in sports gambling by major technology companies and what it could mean for the future of this industry.
+
+http://www.espn.com/chalk/story/_/id/17892685/the-future-sports-betting-how-sports-betting-legalized-united-states-the-marketplace-look-like. 
+```
+
+##Preview Data
+```{r}
+suppressPackageStartupMessages(library(kernlab))
+suppressPackageStartupMessages(library(neuralnet))
+suppressPackageStartupMessages(library(gmodels))
+suppressPackageStartupMessages(library(lmtest))
+suppressPackageStartupMessages(library(car))
+suppressPackageStartupMessages(library(aod))
+suppressPackageStartupMessages(library(C50))
+suppressPackageStartupMessages(library(class))
+suppressPackageStartupMessages(library(neuralnet))
+regularSeason <- as.data.frame(read.table("RegularSeasonDetailedResults.csv", header=T, sep=","))
+head(regularSeason)
+postSeason <- as.data.frame(read.table("TourneyDetailedResults.csv", header=T, sep=","))
+head(postSeason)
+tournamentSeeds <- as.data.frame(read.table("TourneySeeds.csv", header = T, sep=","))
+head(tournamentSeeds)
+```
+
+##Organize and Clean Data
+```{r}
+levels(regularSeason$Wloc) <- c(0, 1, 0)
+levels(postSeason$Wloc) <- c(0, 1, 0)
+normalized_regularSeason <- regularSeason
+normalized_regularSeason <- as.data.frame(sapply(normalized_regularSeason, as.numeric))
+normalized_postSeason <- postSeason
+normalized_postSeason <- as.data.frame(sapply(normalized_postSeason, as.numeric))
+
+normalize <- function(x) {
+  return((x - min(x)) / (max(x) - min(x)))
+}
+
+normalized_regularSeason <- as.data.frame(lapply(normalized_regularSeason, normalize))
+normalized_postSeason <- as.data.frame(lapply(normalized_postSeason, normalize))
+
+
+```
+##Data Key
+```
+Wteam = Winning team
+Wscore = Points winning team scored in game
+Lteam = Losing team
+Lscore = Points losing team scored in game
+Wloc = Binary of whether winning team was home
+Numot = Number of Overtime quarters
+fgm = field goals (shots) made
+fga = field goals (shots) attempts
+fgm3 = 3-point field goals (shots) made
+fga3 = 3-point field goals (shots) attempted
+ftm = free-throws made
+fta = free-throws attempted
+or = rebounds on offense
+dr = rebounds on defense
+ast = assists
+to = turnovers
+stl = steals
+blk = blocks
+pf = personal fouls
+```
+
+##Failed Attempt: Team-By-Team Linear Regression
+```
+At first, I thought a team-by-team approach would generate the most accurate results. In order to do this, I started by creating a massive function to further clean the data and subsequently separate it on a team-by-team basis. I successfully did this part, and then tried to predict how many points a team would score based on their match-up in March Madness. I thought that if I could predict how much each team would score, the team that more in the match-up would essentially be the winner. I hypothesized this may generate a more accurate result than just trying to generate a win probability. However, the major mistake I made in this approach was that I included every single variable, but that only diluted the potency of my model. When I tried to run a step function to uncover only the important variables, I realized that each team has different significant variables and so it was overwhelming on how to create an unifying overarching model.
+```
+
+```{r}
+keyTeamStatistics <- function(teamA, teamB) {
+  winningdataTeamA <- regularSeason[regularSeason$Wteam == teamA, ]
+  losingdataTeamA <- regularSeason[regularSeason$Lteam == teamA, ]
+  winningdataTeamB <- regularSeason[regularSeason$Wteam == teamB, ]
+  losingdataTeamB <- regularSeason[regularSeason$Lteam == teamB, ]
+  
+  w_teamA_Points <- winningdataTeamA$Wscore
+  w_teamA_Loc <- winningdataTeamA$Wloc
+  w_teamA_overtime <- winningdataTeamA$Numot
+  w_teamA_FieldGoalsMade <- winningdataTeamA$Wfgm
+  w_teamA_FieldGoalsAttempted <- winningdataTeamA$Wfga
+  w_teamA_ThreePointersMade <- winningdataTeamA$Wfgm3
+  w_teamA_ThreePointersAttempted <- winningdataTeamA$Wfga3
+  w_teamA_FreethrowsMade <-winningdataTeamA$Wftm
+  w_teamA_FreethrowsAttempted <- winningdataTeamA$Wfta
+  w_teamA_OffenseRebounds <- winningdataTeamA$Wor
+  w_teamA_DefenseRebounds <- winningdataTeamA$Wdr
+  w_teamA_Assists <- winningdataTeamA$Wast
+  w_teamA_Turnovers <- winningdataTeamA$Wto
+  w_teamA_Steals <- winningdataTeamA$Wstl
+  w_teamA_Blocks <- winningdataTeamA$Wblk
+  w_teamA_PersonalFouls <- winningdataTeamA$Wpf
+  w_opponentA_Points <- winningdataTeamA$Lscore
+  w_opponentA_FieldGoalsMade <- winningdataTeamA$Lfgm
+  w_opponentA_FieldGoalsAttempted <- winningdataTeamA$Lfga
+  w_opponentA_ThreePointersMade <- winningdataTeamA$Lfgm3
+  w_opponentA_ThreePointersAttempted <- winningdataTeamA$Lfga3
+  w_opponentA_FreethrowsMade <-winningdataTeamA$Lftm
+  w_opponentA_FreethrowsAttempted <- winningdataTeamA$Lfta
+  w_opponentA_OffenseRebounds <- winningdataTeamA$Lor
+  w_opponentA_DefenseRebounds <- winningdataTeamA$Ldr
+  w_opponentA_Assists <- winningdataTeamA$Last
+  w_opponentA_Turnovers <- winningdataTeamA$Lto
+  w_opponentA_Steals <- winningdataTeamA$Lstl
+  w_opponentA_Blocks <- winningdataTeamA$Lblk
+  w_opponentA_PersonalFouls <- winningdataTeamA$Lpf
+  
+  l_teamA_Points <- losingdataTeamA$Lscore
+  l_teamA_Loc <- losingdataTeamA$Wloc
+  l_teamA_overtime <- losingdataTeamA$Numot
+  l_teamA_FieldGoalsMade <- losingdataTeamA$Lfgm
+  l_teamA_FieldGoalsAttempted <- losingdataTeamA$Lfga
+  l_teamA_ThreePointersMade <- losingdataTeamA$Lfgm3
+  l_teamA_ThreePointersAttempted <- losingdataTeamA$Lfga3
+  l_teamA_FreethrowsMade <-losingdataTeamA$Lftm
+  l_teamA_FreethrowsAttempted <- losingdataTeamA$Lfta
+  l_teamA_OffenseRebounds <- losingdataTeamA$Lor
+  l_teamA_DefenseRebounds <- losingdataTeamA$Ldr
+  l_teamA_Assists <- losingdataTeamA$Last
+  l_teamA_Turnovers <- losingdataTeamA$Lto
+  l_teamA_Steals <- losingdataTeamA$Lstl
+  l_teamA_Blocks <- losingdataTeamA$Lblk
+  l_teamA_PersonalFouls <- losingdataTeamA$Lpf
+  l_opponentA_Points <- losingdataTeamA$Wscore
+  l_opponentA_FieldGoalsMade <- losingdataTeamA$Wfgm
+  l_opponentA_FieldGoalsAttempted <- losingdataTeamA$Wfga
+  l_opponentA_ThreePointersMade <- losingdataTeamA$Wfgm3
+  l_opponentA_ThreePointersAttempted <- losingdataTeamA$Wfga3
+  l_opponentA_FreethrowsMade <-losingdataTeamA$Wftm
+  l_opponentA_FreethrowsAttempted <- losingdataTeamA$Wfta
+  l_opponentA_OffenseRebounds <- losingdataTeamA$Wor
+  l_opponentA_DefenseRebounds <- losingdataTeamA$Wdr
+  l_opponentA_Assists <- losingdataTeamA$Wast
+  l_opponentA_Turnovers <- losingdataTeamA$Wto
+  l_opponentA_Steals <- losingdataTeamA$Wstl
+  l_opponentA_Blocks <- losingdataTeamA$Wblk
+  l_opponentA_PersonalFouls <- losingdataTeamA$Wpf
+  
+  teamA_Points <- c(w_teamA_Points, l_teamA_Points)
+  teamA_Points_Mean <- mean(teamA_Points)
+  teamA_Loc <- c(w_teamA_Loc, l_teamA_Loc)
+  teamA_Loc_Mean <- mean(teamA_Loc)
+  teamA_Overtime <- c(w_teamA_overtime, l_teamA_overtime)
+  teamA_Overtime_Mean <- mean(teamA_Overtime)
+  teamA_FieldGoalsMade <- c(w_teamA_FieldGoalsMade, l_teamA_FieldGoalsMade)
+  teamA_FieldGoalsMade_Mean <- mean(teamA_FieldGoalsMade)
+  teamA_FieldGoalsAttempted <- c(w_teamA_FieldGoalsAttempted, l_teamA_FieldGoalsAttempted)
+  teamA_FieldGoalsAttempted_Mean <- mean(teamA_FieldGoalsAttempted)
+  teamA_ThreePointersMade <- c(w_teamA_ThreePointersMade, l_teamA_ThreePointersMade)
+  teamA_ThreePointersMade_Mean <- mean(teamA_ThreePointersMade)
+  teamA_ThreePointersAttempted <- c(w_teamA_ThreePointersAttempted, l_teamA_ThreePointersAttempted)
+  teamA_ThreePointersAttempted_Mean <- mean(teamA_ThreePointersAttempted)
+  teamA_FreethrowsMade <-c(w_teamA_FreethrowsMade, l_teamA_FreethrowsMade)
+  teamA_FreethrowsMade_Mean <- mean(teamA_FreethrowsMade)
+  teamA_FreethrowsAttempted <- c(w_teamA_FreethrowsAttempted, l_teamA_FreethrowsAttempted)
+  teamA_FreethrowsAttempted_Mean <- mean(teamA_FreethrowsAttempted)
+  teamA_OffenseRebounds <- c(w_teamA_OffenseRebounds, l_teamA_OffenseRebounds)
+  teamA_OffenseRebounds_Mean <- mean(teamA_OffenseRebounds)
+  teamA_DefenseRebounds <- c(w_teamA_DefenseRebounds, l_teamA_DefenseRebounds)
+  teamA_DefenseRebounds_Mean <- mean(teamA_DefenseRebounds)
+  teamA_Assists <- c(w_teamA_Assists, l_teamA_Assists)
+  teamA_Assists_Mean <- mean(teamA_Assists)
+  teamA_Turnovers <- c(w_teamA_Turnovers, l_teamA_Turnovers)
+  teamA_Turnovers_Mean <- mean(teamA_Turnovers)
+  teamA_Steals <- c(w_teamA_Steals, l_teamA_Steals)
+  teamA_Steals_Mean <- mean(teamA_Steals)
+  teamA_Blocks <- c(w_teamA_Blocks, l_teamA_Blocks)
+  teamA_Blocks_Mean <- mean(teamA_Blocks)
+  teamA_PersonalFouls <- c(w_teamA_PersonalFouls, l_teamA_PersonalFouls)
+  teamA_PersonalFouls_Mean <- mean(teamA_PersonalFouls)
+  opponentA_Points <- c(w_opponentA_Points, l_opponentA_Points)
+  opponentA_FieldGoalsMade <- c(w_opponentA_FieldGoalsMade, l_opponentA_FieldGoalsMade)
+  opponentA_FieldGoalsAttempted <- c(w_opponentA_FieldGoalsAttempted, l_opponentA_FieldGoalsAttempted)
+  opponentA_ThreePointersMade <- c(w_opponentA_ThreePointersMade, l_opponentA_ThreePointersMade)
+  opponentA_ThreePointersAttempted <- c(w_opponentA_ThreePointersAttempted, l_opponentA_ThreePointersAttempted)
+  opponentA_FreethrowsMade <- c(w_opponentA_FreethrowsMade, l_opponentA_FreethrowsMade)
+  opponentA_FreethrowsAttempted <- c(w_opponentA_FreethrowsAttempted, l_opponentA_FreethrowsAttempted)
+  opponentA_OffenseRebounds <- c(w_opponentA_OffenseRebounds, l_opponentA_OffenseRebounds)
+  opponentA_DefenseRebounds <- c(w_opponentA_DefenseRebounds, l_opponentA_DefenseRebounds)
+  opponentA_Assists <- c(w_opponentA_Assists, l_opponentA_Assists)
+  opponentA_Turnovers <- c(w_opponentA_Turnovers, l_opponentA_Turnovers)
+  opponentA_Steals <- c(w_opponentA_Steals, l_opponentA_Steals)
+  opponentA_Blocks <- c(w_opponentA_Blocks, l_opponentA_Blocks)
+  opponentA_PersonalFouls <- c(w_opponentA_PersonalFouls, l_opponentA_PersonalFouls)
+  
+  w_teamB_Points <- winningdataTeamB$Wscore
+  w_teamB_Loc <- winningdataTeamB$Wloc
+  w_teamB_overtime <- winningdataTeamB$Numot
+  w_teamB_FieldGoalsMade <- winningdataTeamB$Wfgm
+  w_teamB_FieldGoalsAttempted <- winningdataTeamB$Wfga
+  w_teamB_ThreePointersMade <- winningdataTeamB$Wfgm3
+  w_teamB_ThreePointersAttempted <- winningdataTeamB$Wfga3
+  w_teamB_FreethrowsMade <-winningdataTeamB$Wftm
+  w_teamB_FreethrowsAttempted <- winningdataTeamB$Wfta
+  w_teamB_OffenseRebounds <- winningdataTeamB$Wor
+  w_teamB_DefenseRebounds <- winningdataTeamB$Wdr
+  w_teamB_Assists <- winningdataTeamB$Wast
+  w_teamB_Turnovers <- winningdataTeamB$Wto
+  w_teamB_Steals <- winningdataTeamB$Wstl
+  w_teamB_Blocks <- winningdataTeamB$Wblk
+  w_teamB_PersonalFouls <- winningdataTeamB$Wpf
+  w_opponentB_Points <- winningdataTeamB$Lscore
+  w_opponentB_FieldGoalsMade <- winningdataTeamB$Lfgm
+  w_opponentB_FieldGoalsAttempted <- winningdataTeamB$Lfga
+  w_opponentB_ThreePointersMade <- winningdataTeamB$Lfgm3
+  w_opponentB_ThreePointersAttempted <- winningdataTeamB$Lfga3
+  w_opponentB_FreethrowsMade <-winningdataTeamB$Lftm
+  w_opponentB_FreethrowsAttempted <- winningdataTeamB$Lfta
+  w_opponentB_OffenseRebounds <- winningdataTeamB$Lor
+  w_opponentB_DefenseRebounds <- winningdataTeamB$Ldr
+  w_opponentB_Assists <- winningdataTeamB$Last
+  w_opponentB_Turnovers <- winningdataTeamB$Lto
+  w_opponentB_Steals <- winningdataTeamB$Lstl
+  w_opponentB_Blocks <- winningdataTeamB$Lblk
+  w_opponentB_PersonalFouls <- winningdataTeamB$Lpf
+  
+  l_teamB_Points <- losingdataTeamB$Lscore
+  l_teamB_Loc <- losingdataTeamB$Wloc
+  l_teamB_overtime <- losingdataTeamB$Numot
+  l_teamB_FieldGoalsMade <- losingdataTeamB$Lfgm
+  l_teamB_FieldGoalsAttempted <- losingdataTeamB$Lfga
+  l_teamB_ThreePointersMade <- losingdataTeamB$Lfgm3
+  l_teamB_ThreePointersAttempted <- losingdataTeamB$Lfga3
+  l_teamB_FreethrowsMade <-losingdataTeamB$Lftm
+  l_teamB_FreethrowsAttempted <- losingdataTeamB$Lfta
+  l_teamB_OffenseRebounds <- losingdataTeamB$Lor
+  l_teamB_DefenseRebounds <- losingdataTeamB$Ldr
+  l_teamB_Assists <- losingdataTeamB$Last
+  l_teamB_Turnovers <- losingdataTeamB$Lto
+  l_teamB_Steals <- losingdataTeamB$Lstl
+  l_teamB_Blocks <- losingdataTeamB$Lblk
+  l_teamB_PersonalFouls <- losingdataTeamB$Lpf
+  l_opponentB_Points <- losingdataTeamB$Wscore
+  l_opponentB_FieldGoalsMade <- losingdataTeamB$Wfgm
+  l_opponentB_FieldGoalsAttempted <- losingdataTeamB$Wfga
+  l_opponentB_ThreePointersMade <- losingdataTeamB$Wfgm3
+  l_opponentB_ThreePointersAttempted <- losingdataTeamB$Wfga3
+  l_opponentB_FreethrowsMade <-losingdataTeamB$Wftm
+  l_opponentB_FreethrowsAttempted <- losingdataTeamB$Wfta
+  l_opponentB_OffenseRebounds <- losingdataTeamB$Wor
+  l_opponentB_DefenseRebounds <- losingdataTeamB$Wdr
+  l_opponentB_Assists <- losingdataTeamB$Wast
+  l_opponentB_Turnovers <- losingdataTeamB$Wto
+  l_opponentB_Steals <- losingdataTeamB$Wstl
+  l_opponentB_Blocks <- losingdataTeamB$Wblk
+  l_opponentB_PersonalFouls <- losingdataTeamB$Wpf
+  
+  teamB_Points <- c(w_teamB_Points, l_teamB_Points)
+  teamB_Points_Mean <- mean(teamB_Points)
+  teamB_Loc <- c(w_teamB_Loc, l_teamB_Loc)
+  teamB_Loc_Mean <- mean(teamB_Loc)
+  teamB_Overtime <- c(w_teamB_overtime, l_teamB_overtime)
+  teamB_Overtime_Mean <- mean(teamB_Overtime)
+  teamB_FieldGoalsMade <- c(w_teamB_FieldGoalsMade, l_teamB_FieldGoalsMade)
+  teamB_FieldGoalsMade_Mean <- mean(teamB_FieldGoalsMade)
+  teamB_FieldGoalsAttempted <- c(w_teamB_FieldGoalsAttempted, l_teamB_FieldGoalsAttempted)
+  teamB_FieldGoalsAttempted_Mean <- mean(teamB_FieldGoalsAttempted)
+  teamB_ThreePointersMade <- c(w_teamB_ThreePointersMade, l_teamB_ThreePointersMade)
+  teamB_ThreePointersMade_Mean <- mean(teamB_ThreePointersMade)
+  teamB_ThreePointersAttempted <- c(w_teamB_ThreePointersAttempted, l_teamB_ThreePointersAttempted)
+  teamB_ThreePointersAttempted_Mean <- mean(teamB_ThreePointersAttempted)
+  teamB_FreethrowsMade <-c(w_teamB_FreethrowsMade, l_teamB_FreethrowsMade)
+  teamB_FreethrowsMade_Mean <- mean(teamB_FreethrowsMade)
+  teamB_FreethrowsAttempted <- c(w_teamB_FreethrowsAttempted, l_teamB_FreethrowsAttempted)
+  teamB_FreethrowsAttempted_Mean <- mean(teamB_FreethrowsAttempted)
+  teamB_OffenseRebounds <- c(w_teamB_OffenseRebounds, l_teamB_OffenseRebounds)
+  teamB_OffenseRebounds_Mean <- mean(teamB_OffenseRebounds)
+  teamB_DefenseRebounds <- c(w_teamB_DefenseRebounds, l_teamB_DefenseRebounds)
+  teamB_DefenseRebounds_Mean <- mean(teamB_DefenseRebounds)
+  teamB_Assists <- c(w_teamB_Assists, l_teamB_Assists)
+  teamB_Assists_Mean <- mean(teamB_Assists)
+  teamB_Turnovers <- c(w_teamB_Turnovers, l_teamB_Turnovers)
+  teamB_Turnovers_Mean <- mean(teamB_Turnovers)
+  teamB_Steals <- c(w_teamB_Steals, l_teamB_Steals)
+  teamB_Steals_Mean <- mean(teamB_Steals)
+  teamB_Blocks <- c(w_teamB_Blocks, l_teamB_Blocks)
+  teamB_Blocks_Mean <- mean(teamB_Blocks)
+  teamB_PersonalFouls <- c(w_teamB_PersonalFouls, l_teamB_PersonalFouls)
+  teamB_PersonalFouls_Mean <- mean(teamB_PersonalFouls)
+  opponentB_Points <- c(w_opponentB_Points, l_opponentB_Points)
+  opponentB_FieldGoalsMade <- c(w_opponentB_FieldGoalsMade, l_opponentB_FieldGoalsMade)
+  opponentB_FieldGoalsAttempted <- c(w_opponentB_FieldGoalsAttempted, l_opponentB_FieldGoalsAttempted)
+  opponentB_ThreePointersMade <- c(w_opponentB_ThreePointersMade, l_opponentB_ThreePointersMade)
+  opponentB_ThreePointersAttempted <- c(w_opponentB_ThreePointersAttempted, l_opponentB_ThreePointersAttempted)
+  opponentB_FreethrowsMade <- c(w_opponentB_FreethrowsMade, l_opponentB_FreethrowsMade)
+  opponentB_FreethrowsAttempted <- c(w_opponentB_FreethrowsAttempted, l_opponentB_FreethrowsAttempted)
+  opponentB_OffenseRebounds <- c(w_opponentB_OffenseRebounds, l_opponentB_OffenseRebounds)
+  opponentB_DefenseRebounds <- c(w_opponentB_DefenseRebounds, l_opponentB_DefenseRebounds)
+  opponentB_Assists <- c(w_opponentB_Assists, l_opponentB_Assists)
+  opponentB_Turnovers <- c(w_opponentB_Turnovers, l_opponentB_Turnovers)
+  opponentB_Steals <- c(w_opponentB_Steals, l_opponentB_Steals)
+  opponentB_Blocks <- c(w_opponentB_Blocks, l_opponentB_Blocks)
+  opponentB_PersonalFouls <- c(w_opponentB_PersonalFouls, l_opponentB_PersonalFouls)
+  
+  
+  teamA_LinearModel <- lm(teamA_Points ~ teamA_FieldGoalsMade + teamA_FieldGoalsAttempted + teamA_ThreePointersMade + teamA_ThreePointersAttempted + teamA_FreethrowsMade + teamA_FreethrowsAttempted + teamA_OffenseRebounds + teamA_DefenseRebounds + teamA_Assists + teamA_Turnovers + teamA_Steals + teamA_Blocks + teamA_PersonalFouls + opponentA_Points + opponentA_FieldGoalsMade + opponentA_FieldGoalsAttempted + opponentA_ThreePointersMade + opponentA_ThreePointersAttempted + opponentA_FreethrowsMade + opponentA_FreethrowsAttempted + opponentA_OffenseRebounds + opponentA_DefenseRebounds + opponentA_Assists + opponentA_Turnovers + opponentA_Steals + opponentA_Blocks + opponentA_PersonalFouls)
+  
+  teamA_SpecificValues <- data.frame(teamA_FieldGoalsMade = teamA_FieldGoalsMade_Mean, teamA_FieldGoalsAttempted = teamA_FieldGoalsAttempted_Mean, teamA_ThreePointersMade = teamA_ThreePointersMade_Mean, teamA_ThreePointersAttempted = teamA_ThreePointersAttempted_Mean, teamA_FreethrowsMade = teamA_FreethrowsMade_Mean, teamA_FreethrowsAttempted = teamA_FreethrowsAttempted_Mean, teamA_OffenseRebounds = teamA_OffenseRebounds_Mean, teamA_DefenseRebounds = teamA_DefenseRebounds_Mean, teamA_Assists = teamA_Assists_Mean, teamA_Turnovers = teamA_Turnovers_Mean, teamA_Steals = teamA_Steals_Mean, teamA_Blocks = teamA_Blocks_Mean, teamA_PersonalFouls = teamA_PersonalFouls_Mean, opponentA_Points = teamB_Points_Mean, opponentA_FieldGoalsMade = teamB_FieldGoalsMade_Mean, opponentA_FieldGoalsAttempted = teamB_FieldGoalsAttempted_Mean, opponentA_ThreePointersMade = teamB_ThreePointersMade_Mean, opponentA_ThreePointersAttempted = teamB_ThreePointersAttempted_Mean, opponentA_FreethrowsMade = teamB_FreethrowsMade_Mean, opponentA_FreethrowsAttempted = teamB_FreethrowsAttempted_Mean, opponentA_OffenseRebounds = teamB_OffenseRebounds_Mean, opponentA_DefenseRebounds = teamB_DefenseRebounds_Mean, opponentA_Assists = teamB_Assists_Mean, opponentA_Turnovers = teamB_Turnovers_Mean, opponentA_Steals = teamB_Steals_Mean, opponentA_Blocks = teamB_Blocks_Mean, opponentA_PersonalFouls = teamB_PersonalFouls_Mean)
+  abc <- predict(teamA_LinearModel, newdata=teamA_SpecificValues)
+  
+  teamB_LinearModel <- lm(teamB_Points ~ teamB_FieldGoalsMade + teamB_FieldGoalsAttempted + teamB_ThreePointersMade + teamB_ThreePointersAttempted + teamB_FreethrowsMade + teamB_FreethrowsAttempted + teamB_OffenseRebounds + teamB_DefenseRebounds + teamB_Assists + teamB_Turnovers + teamB_Steals + teamB_Blocks + teamB_PersonalFouls + opponentB_Points + opponentB_FieldGoalsMade + opponentB_FieldGoalsAttempted + opponentB_ThreePointersMade + opponentB_ThreePointersAttempted + opponentB_FreethrowsMade + opponentB_FreethrowsAttempted + opponentB_OffenseRebounds + opponentB_DefenseRebounds + opponentB_Assists + opponentB_Turnovers + opponentB_Steals + opponentB_Blocks + opponentB_PersonalFouls)
+  aaa <- teamA_Points_Mean - abc
+  return(aaa)
+}
+
+#keyTeamStatistics(1101, 1103)
+
+score <- function(teamA) {
+  winningdataTeamA <- regularSeason[regularSeason$Wteam == teamA, ]
+  losingdataTeamA <- regularSeason[regularSeason$Lteam == teamA, ]
+  allDataTeamA <- rbind(winningdataTeamA, losingdataTeamA)
+  w_teamA <- winningdataTeamA$Wscore
+  l_teamA <- losingdataTeamA$Lscore
+  teamA_Points <- c(w_teamA, l_teamA)
+  return(teamA_Points)
+}
+
+fieldGoalsMade <- function(teamA) {
+  winningdataTeamA <- regularSeason[regularSeason$Wteam == teamA, ]
+  losingdataTeamA <- regularSeason[regularSeason$Lteam == teamA, ]
+  allDataTeamA <- rbind(winningdataTeamA, losingdataTeamA)
+  w_teamA <- winningdataTeamA$Wfgm
+  l_teamA <- losingdataTeamA$Lfgm
+  teamA_fieldGaolsMade <- c(w_teamA, l_teamA)
+  return(teamA_Points)
+}
+```
+##Cleaner Data
+```
+I think I was really struggling before because there were two separate outcomes (win and loss) combined in each row. In order to made it more suitable for my level of comprehension with R, I decided I should break everything into separate lines. The winning team gets one row all to itself and the losing team gets one row all to itself.
+```
+```{r}
+winningteamData <- regularSeason
+names(winningteamData)[2] <- "Win"
+winningteamData$Win <- 1
+names(winningteamData)[3] <- "Team"
+names(winningteamData)[4] <- "TeamScore"
+names(winningteamData)[5] <- "Opp"
+names(winningteamData)[6] <- "OppScore"
+names(winningteamData)[7] <- "Home"
+names(winningteamData)[9] <- "TeamFGM"
+names(winningteamData)[10] <- "TeamFGA"
+names(winningteamData)[11] <- "TeamFGM3"
+names(winningteamData)[12] <- "TeamFGA3"
+names(winningteamData)[13] <- "TeamFTM"
+names(winningteamData)[14] <- "TeamFTA"
+names(winningteamData)[15] <- "TeamOR"
+names(winningteamData)[16] <- "TeamDR"
+names(winningteamData)[17] <- "TeamAST"
+names(winningteamData)[18] <- "TeamTO"
+names(winningteamData)[19] <- "TeamSTL"
+names(winningteamData)[20] <- "TeamBLK"
+names(winningteamData)[21] <- "TeamPF"
+names(winningteamData)[22] <- "OppFGM"
+names(winningteamData)[23] <- "OppFGA"
+names(winningteamData)[24] <- "OppFGM3"
+names(winningteamData)[25] <- "OppFGA3"
+names(winningteamData)[26] <- "OppFTM"
+names(winningteamData)[27] <- "OppFTA"
+names(winningteamData)[28] <- "OppOR"
+names(winningteamData)[29] <- "OppDR"
+names(winningteamData)[30] <- "OppAST"
+names(winningteamData)[31] <- "OppTO"
+names(winningteamData)[32] <- "OppSTL"
+names(winningteamData)[33] <- "OppBLK"
+names(winningteamData)[34] <- "OppPF"
+winningteamData[7] <- NULL
+
+losingteamData <- regularSeason
+names(losingteamData)[2] <- "Win"
+losingteamData$Win <- 0
+names(losingteamData)[3] <- "Opp"
+names(losingteamData)[4] <- "OppScore"
+names(losingteamData)[5] <- "Team"
+names(losingteamData)[6] <- "TeamScore"
+names(losingteamData)[7] <- "Home"
+names(losingteamData)[9] <- "OppFGM"
+names(losingteamData)[10] <- "OppFGA"
+names(losingteamData)[11] <- "OppFGM3"
+names(losingteamData)[12] <- "OppFGA3"
+names(losingteamData)[13] <- "OppFTM"
+names(losingteamData)[14] <- "OppFTA"
+names(losingteamData)[15] <- "OppOR"
+names(losingteamData)[16] <- "OppDR"
+names(losingteamData)[17] <- "OppAST"
+names(losingteamData)[18] <- "OppTO"
+names(losingteamData)[19] <- "OppSTL"
+names(losingteamData)[20] <- "OppBLK"
+names(losingteamData)[21] <- "OppPF"
+names(losingteamData)[22] <- "TeamFGM"
+names(losingteamData)[23] <- "TeamFGA"
+names(losingteamData)[24] <- "TeamFGM3"
+names(losingteamData)[25] <- "TeamFGA3"
+names(losingteamData)[26] <- "TeamFTM"
+names(losingteamData)[27] <- "TeamFTA"
+names(losingteamData)[28] <- "TeamOR"
+names(losingteamData)[29] <- "TeamDR"
+names(losingteamData)[30] <- "TeamAST"
+names(losingteamData)[31] <- "TeamTO"
+names(losingteamData)[32] <- "TeamSTL"
+names(losingteamData)[33] <- "TeamBLK"
+names(losingteamData)[34] <- "TeamPF"
+losingteamData[7] <- NULL
+
+singleRowData_All <- rbind(winningteamData, losingteamData)
+
+
+winningteamData_PostSeason <- postSeason
+names(winningteamData_PostSeason)[2] <- "Win"
+winningteamData_PostSeason$Win <- 1
+names(winningteamData_PostSeason)[3] <- "Team"
+names(winningteamData_PostSeason)[4] <- "TeamScore"
+names(winningteamData_PostSeason)[5] <- "Opp"
+names(winningteamData_PostSeason)[6] <- "OppScore"
+names(winningteamData_PostSeason)[7] <- "Home"
+names(winningteamData_PostSeason)[9] <- "TeamFGM"
+names(winningteamData_PostSeason)[10] <- "TeamFGA"
+names(winningteamData_PostSeason)[11] <- "TeamFGM3"
+names(winningteamData_PostSeason)[12] <- "TeamFGA3"
+names(winningteamData_PostSeason)[13] <- "TeamFTM"
+names(winningteamData_PostSeason)[14] <- "TeamFTA"
+names(winningteamData_PostSeason)[15] <- "TeamOR"
+names(winningteamData_PostSeason)[16] <- "TeamDR"
+names(winningteamData_PostSeason)[17] <- "TeamAST"
+names(winningteamData_PostSeason)[18] <- "TeamTO"
+names(winningteamData_PostSeason)[19] <- "TeamSTL"
+names(winningteamData_PostSeason)[20] <- "TeamBLK"
+names(winningteamData_PostSeason)[21] <- "TeamPF"
+names(winningteamData_PostSeason)[22] <- "OppFGM"
+names(winningteamData_PostSeason)[23] <- "OppFGA"
+names(winningteamData_PostSeason)[24] <- "OppFGM3"
+names(winningteamData_PostSeason)[25] <- "OppFGA3"
+names(winningteamData_PostSeason)[26] <- "OppFTM"
+names(winningteamData_PostSeason)[27] <- "OppFTA"
+names(winningteamData_PostSeason)[28] <- "OppOR"
+names(winningteamData_PostSeason)[29] <- "OppDR"
+names(winningteamData_PostSeason)[30] <- "OppAST"
+names(winningteamData_PostSeason)[31] <- "OppTO"
+names(winningteamData_PostSeason)[32] <- "OppSTL"
+names(winningteamData_PostSeason)[33] <- "OppBLK"
+names(winningteamData_PostSeason)[34] <- "OppPF"
+winningteamData_PostSeason[7] <- NULL
+
+losingteamData_PostSeason <- postSeason
+names(losingteamData_PostSeason)[2] <- "Win"
+losingteamData_PostSeason$Win <- 0
+names(losingteamData_PostSeason)[3] <- "Opp"
+names(losingteamData_PostSeason)[4] <- "OppScore"
+names(losingteamData_PostSeason)[5] <- "Team"
+names(losingteamData_PostSeason)[6] <- "TeamScore"
+names(losingteamData_PostSeason)[7] <- "Home"
+names(losingteamData_PostSeason)[9] <- "OppFGM"
+names(losingteamData_PostSeason)[10] <- "OppFGA"
+names(losingteamData_PostSeason)[11] <- "OppFGM3"
+names(losingteamData_PostSeason)[12] <- "OppFGA3"
+names(losingteamData_PostSeason)[13] <- "OppFTM"
+names(losingteamData_PostSeason)[14] <- "OppFTA"
+names(losingteamData_PostSeason)[15] <- "OppOR"
+names(losingteamData_PostSeason)[16] <- "OppDR"
+names(losingteamData_PostSeason)[17] <- "OppAST"
+names(losingteamData_PostSeason)[18] <- "OppTO"
+names(losingteamData_PostSeason)[19] <- "OppSTL"
+names(losingteamData_PostSeason)[20] <- "OppBLK"
+names(losingteamData_PostSeason)[21] <- "OppPF"
+names(losingteamData_PostSeason)[22] <- "TeamFGM"
+names(losingteamData_PostSeason)[23] <- "TeamFGA"
+names(losingteamData_PostSeason)[24] <- "TeamFGM3"
+names(losingteamData_PostSeason)[25] <- "TeamFGA3"
+names(losingteamData_PostSeason)[26] <- "TeamFTM"
+names(losingteamData_PostSeason)[27] <- "TeamFTA"
+names(losingteamData_PostSeason)[28] <- "TeamOR"
+names(losingteamData_PostSeason)[29] <- "TeamDR"
+names(losingteamData_PostSeason)[30] <- "TeamAST"
+names(losingteamData_PostSeason)[31] <- "TeamTO"
+names(losingteamData_PostSeason)[32] <- "TeamSTL"
+names(losingteamData_PostSeason)[33] <- "TeamBLK"
+names(losingteamData_PostSeason)[34] <- "TeamPF"
+losingteamData_PostSeason[7] <- NULL
+
+singleRowData_All_PostSeason <- rbind(winningteamData_PostSeason, losingteamData_PostSeason)
+
+```
+##Is this the year?
+```
+In the 2012-2013 Season, Michigan Basketball made it to the NCAA Men's Basketball National Championship game. However, fast forward a few years and in the 2014-2015 Season and the Michigan Wolverines didn't even make the tournament. Every NCAA basketball season is unique and so I hypothesize that it would be smart to see if I can make a universal model for a particular season that can predict all winners. Making one for all 300+ teams could be a little too much ...
+
+For simplicity's sake, I am just going to take the NCAA Men's Basketball Data for 2015. 
+```
+```{r}
+singleRowData_All2015 <- singleRowData_All[singleRowData_All$Season == 2015, ]
+tail(singleRowData_All_PostSeason)
+singleRowData_All2015_PostSeason <- singleRowData_All_PostSeason[singleRowData_All_PostSeason$Season == 2015, ]
+head(singleRowData_All2015_PostSeason)
+```
+###Regression Models
+```{r}
+singleRowData_All2015_Regression <- singleRowData_All2015
+singleRowData_All2015_Regression[1] <- NULL #Remove 'Season'
+singleRowData_All2015_Regression[2] <- NULL #Remove 'Team'
+singleRowData_All2015_Regression[3] <- NULL #Remove 'Opponent'
+singleRowData_All2015_Regression[4] <- NULL #Remove 'Numot'
+singleRowData_All2015_Regression[8] <- NULL #Remove 'TeamFTM' because causing problems with regression
+singleRowData_All2015_Regression[20] <- NULL #Remove 'OppFTM' because causing problems with regression
+```
+####Linear Regression Model
+```{r}
+linear_Model <- lm(Win ~ ., data = singleRowData_All2015_Regression)
+stepLinearModel <- step(object = linear_Model, direction = "backward", trace=0)
+summary(stepLinearModel)
+```
+```
+I noticed two things when I did this. 
+
+First was that because I broke up the Winning team and the Losing team into two separate rows, it resulted in redundancy in my data. The "Opp" columns were essentially the same number but of the opposite sign of the "Team" data. Therefore I should delete these columns.
+
+Secondly, I realized that I shouldn't be running a Linear Regression, but rather a Binomial Logit Model to predict whether the team will win or not.
+```
+####Logit Regression Model
+```{r}
+singleRowData_All2015_Regression_Logit <- singleRowData_All2015_Regression
+singleRowData_All2015_Regression_Logit[3] <- NULL
+singleRowData_All2015_Regression_Logit[15:ncol(singleRowData_All2015_Regression_Logit)] <- NULL
+logit_Model <- glm(Win ~ ., data= singleRowData_All2015_Regression_Logit, family= "binomial")
+summary(logit_Model)
+```
+```
+I got a much cleaner result when it came to the Logit Regression.
+```
+###Decision Tree Model
+```
+While the Logit Model was good, it was a very old concept that I learned at the start of the semester. As a result, I decided to go to the other extreme and see how a Decision Tree would do.
+```
+```{r}
+singleRowData_All2015_DecisionTree <- singleRowData_All2015
+singleRowData_All2015_DecisionTree[1] <- NULL #Remove 'Season' since given
+singleRowData_All2015_DecisionTree[3] <- NULL #Remove 'Score'
+singleRowData_All2015_DecisionTree[4] <- NULL #Remove 'Score'
+singleRowData_All2015_DecisionTree$Win <- as.factor(singleRowData_All2015_DecisionTree$Win)
+decisionTree_Model <- C5.0(singleRowData_All2015_DecisionTree[-1], singleRowData_All2015_DecisionTree$Win)
+summary(decisionTree_Model)
+```
+###KNN Model
+```{r}
+regularSeason_2015_KNN <- singleRowData_All2015
+regularSeason_2015_KNN[1] <- NULL
+regularSeason_2015_KNN[2] <- NULL
+regularSeason_2015_KNN[3] <- NULL
+regularSeason_2015_KNN[4] <- NULL
+regularSeason_2015_KNN[3] <- NULL
+regularSeason_2015_KNN[2] <- NULL
+postSeason_2015_KNN <- singleRowData_All2015_PostSeason
+postSeason_2015_KNN[1] <- NULL
+postSeason_2015_KNN[2] <- NULL
+postSeason_2015_KNN[3] <- NULL
+postSeason_2015_KNN[4] <- NULL
+postSeason_2015_KNN[3] <- NULL
+postSeason_2015_KNN[2] <- NULL
+regularSeason_2015_normalized <- as.data.frame(lapply(regularSeason_2015_KNN[1:ncol(regularSeason_2015_KNN)], normalize))
+postSeason_2015_normalized <- as.data.frame(lapply(postSeason_2015_KNN[1:ncol(postSeason_2015_KNN)], normalize))
+
+regularSeason_2015_labels <- regularSeason_2015_KNN[1:nrow(regularSeason_2015_KNN), 1]
+postSeason_2015_labels <- postSeason_2015_KNN[1:nrow(postSeason_2015_KNN), 1]
+knn_prediction <- knn(train = regularSeason_2015_normalized, test = postSeason_2015_normalized, cl = regularSeason_2015_labels, k=4)
+
+```
+###Neural Network
+```{r}
+neuralNet_model <- neuralnet(Win ~ TeamFGM + TeamFGA + TeamFGM3 + TeamFGA3 + TeamFTM + TeamFTA + TeamOR + TeamDR + TeamAST + TeamTO + TeamSTL + TeamBLK + TeamPF, data = regularSeason_2015_normalized)
+plot(neuralNet_model)
+```
+
+##Testing
+```
+The premise of March Madness is that an individual has to fill out their bracket before the NCAA Basketball Tournament begins. As a result, when this moment occurs an individual only has the regular season data to made their decisions on, and so I wanted my model to reflect such information limitations that one would face in reality. Therefore, I will use my models above that were trained on Regular Season data and try to predict the winners of March Madness.
+```
+###Decision Tree Testing
+```{r}
+singleRowData_All2015_PostSeason_DecisionTree <- singleRowData_All2015_PostSeason
+singleRowData_All2015_PostSeason_DecisionTree[1] <- NULL #Remove 'Season' since given
+singleRowData_All2015_PostSeason_DecisionTree[3] <- NULL #Remove 'Score'
+singleRowData_All2015_PostSeason_DecisionTree[4] <- NULL #Remove 'Score'
+win_prediction <- predict(decisionTree_Model, singleRowData_All2015_PostSeason_DecisionTree)
+
+CrossTable(singleRowData_All2015_PostSeason_DecisionTree$Win, win_prediction, prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE, dnn = c('actual win', 'predicted win'))
+```
+```
+Correctly predicted 84.3% of last year's March Madness games.
+```
+###KNN Testing
+
+```{r}
+CrossTable(x = postSeason_2015_labels, y = knn_prediction, prop.chisq=FALSE, dnn = c('actual win', 'predicted win'))
+```
+```
+It says that the KNN Model correctly predicted 100% of last year's March Madness games. It seems highly unprobable, and I couldn't find the bug that was causing this.
+```
+
+###Neural Network Testing
+```{r}
+neuralNet_results <- compute(neuralNet_model, postSeason_2015_normalized[1:13])
+predicted_strength <- neuralNet_results$net.result
+cor(predicted_strength, postSeason_2015_normalized$Win)
+
+new_Pred <- round(predicted_strength, digits=0)
+correct <- new_Pred == postSeason_2015_normalized$Win
+prop.table(table(correct))
+```
+According to these test results, the Neural Network correctly predicted 43% of the games.
+```
+
+
